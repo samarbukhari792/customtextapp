@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Urdu Story Writer</title>
+    <!-- Font and Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/jameel-noori@1.1.2/jameel-noori.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-docx/1.8.0/html-to-docx.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+        // ** THE BUG WAS HERE. THIS IS NOW CORRECTED. **
+        // Helper function to correctly escape HTML special characters.
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&")
+                .replace(/</g, "<")
+                .replace(/>/g, ">")
+                .replace(/"/g, "")
+                .replace(/'/g, "'");
+        }
+    </script>
+
+    <style>
+        :root {
+            --sidebar-width: 280px;
+            --sidebar-bg: #e9e9e9;
+            --editor-bg: #fff;
+            --border-color: #ccc;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #f8f8f8;
+            font-family: 'Jameel Noori Nastaleeq', sans-serif;
+            overflow: hidden; /* Important for the slide-out menu */
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: row-reverse;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* --- Sidebar --- */
+        .sidebar {
+            width: var(--sidebar-width);
+            background-color: var(--sidebar-bg);
+            padding: 20px;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            flex-shrink: 0; /* Prevents sidebar from shrinking */
+        }
+        
+        .sidebar h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 24px;
+        }
+
+        .sidebar button {
+            display: block;
+            width: 100%;
+            font-family: 'Jameel Noori Nastaleeq', sans-serif;
+            font-size: 16px;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            background-color: var(--editor-bg);
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin-bottom: 10px;
+        }
+
+        .sidebar button:hover {
+            background-color: #f0f0f0;
+        }
+
+        #chapter-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 20px;
+            flex-grow: 1;
+        }
+
+        #chapter-list li {
+            padding: 12px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 5px;
+            border: 1px solid transparent;
+            font-size: 18px;
+        }
+
+        #chapter-list li:hover {
+            background-color: #dfdfdf;
+        }
+
+        #chapter-list li.active {
+            background-color: var(--editor-bg);
+            border-color: #a0a0a0;
+            font-weight: bold;
+        }
+        
+        /* --- Main Content Area --- */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #editor {
+            width: 100%;
+            height: 100%;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 20px;
+            font-family: 'Jameel Noori Nastaleeq', sans-serif;
+            font-size: 20px;
+            line-height: 1.8;
+            resize: none;
+            box-sizing: border-box;
+            text-align: right;
+            direction: rtl;
+            background-color: var(--editor-bg);
+        }
+
+        #editor:focus {
+            outline: none;
+            border-color: #a0a0a0;
+        }
+        
+        #file-input { display: none; }
+        
+        /* --- MOBILE RESPONSIVE STYLES --- */
+        .menu-toggle { display: none; }
+        #overlay { display: none; }
+
+        @media (max-width: 768px) {
+            .menu-toggle {
+                display: block;
+                position: fixed;
+                top: 15px;
+                left: 15px; /* On the opposite side of the slide-out menu */
+                z-index: 1001;
+                font-size: 24px;
+                background: #fff;
+                border: 1px solid var(--border-color);
+                border-radius: 5px;
+                width: 45px;
+                height: 45px;
+                cursor: pointer;
+                line-height: 45px;
+                text-align: center;
+            }
+
+            .sidebar {
+                position: fixed;
+                top: 0;
+                right: 0;
+                height: 100%;
+                z-index: 1000;
+                transform: translateX(100%); /* Hide off-screen */
+                transition: transform 0.3s ease-in-out;
+            }
+
+            .app-container.sidebar-open .sidebar {
+                transform: translateX(0); /* Slide in */
+            }
+            
+            #overlay {
+                display: block;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                z-index: 999;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease-in-out;
+            }
+
+            .app-container.sidebar-open #overlay {
+                opacity: 1;
+                pointer-events: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Mobile-only Elements -->
+        <button id="menu-toggle" class="menu-toggle">☰</button>
+        <div id="overlay"></div>
+
+        <!-- Sidebar for Controls and Chapters -->
+        <aside class="sidebar">
+            <h2>ابواب</h2>
+            <ul id="chapter-list"></ul>
+            <button id="add-chapter">نیا باب شامل کریں</button>
+            <hr style="width:100%; margin: 20px 0;">
+            <input type="file" id="file-input" accept=".txt">
+            <button id="import-txt">ٹیکسٹ امپورٹ کریں</button>
+            <button id="save-word">ورڈ میں ڈاؤن لوڈ کریں</button>
+            <button id="save-pdf">پی ڈی ایف میں ڈاؤن لوڈ کریں</button>
+            <button id="save-txt">ٹیکسٹ فائل میں ڈاؤن لوڈ کریں</button>
+        </aside>
+
+        <!-- Main Writing Area -->
+        <main class="main-content">
+            <textarea id="editor" placeholder="یہاں لکھیں..."></textarea>
+        </main>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const editor = document.getElementById('editor');
+        const chapterList = document.getElementById('chapter-list');
+        const addChapterBtn = document.getElementById('add-chapter');
+        const saveWordBtn = document.getElementById('save-word');
+        const savePdfBtn = document.getElementById('save-pdf');
+        const saveTxtBtn = document.getElementById('save-txt');
+        const importTxtBtn = document.getElementById('import-txt');
+        const fileInput = document.getElementById('file-input');
+        const appContainer = document.querySelector('.app-container');
+        const menuToggle = document.getElementById('menu-toggle');
+        const overlay = document.getElementById('overlay');
+        
+        let bookData = {};
+
+        function closeSidebar() {
+            appContainer.classList.remove('sidebar-open');
+        }
+
+        menuToggle.addEventListener('click', () => appContainer.classList.toggle('sidebar-open'));
+        overlay.addEventListener('click', closeSidebar);
+
+        function initializeBook() {
+            const savedBook = localStorage.getItem('urduBook');
+            if (savedBook) {
+                bookData = JSON.parse(savedBook);
+            } else {
+                const firstChapterId = `ch_${Date.now()}`;
+                bookData = {
+                    activeChapterId: firstChapterId,
+                    chapters: [{ id: firstChapterId, title: "باب 1", content: "" }]
+                };
+            }
+            saveBook();
+            renderChapters();
+            loadActiveChapter();
+        }
+
+        function saveBook() {
+            const activeChapter = bookData.chapters.find(ch => ch.id === bookData.activeChapterId);
+            if (activeChapter) activeChapter.content = editor.value;
+            localStorage.setItem('urduBook', JSON.stringify(bookData));
+        }
+        
+        function renderChapters() {
+            chapterList.innerHTML = '';
+            bookData.chapters.forEach(chapter => {
+                const li = document.createElement('li');
+                li.textContent = chapter.title;
+                li.dataset.id = chapter.id;
+                if (chapter.id === bookData.activeChapterId) li.classList.add('active');
+                li.addEventListener('click', () => {
+                    switchChapter(chapter.id);
+                    closeSidebar();
+                });
+                chapterList.appendChild(li);
+            });
+        }
+        
+        function loadActiveChapter() {
+            const activeChapter = bookData.chapters.find(ch => ch.id === bookData.activeChapterId);
+            if (activeChapter) editor.value = activeChapter.content;
+            editor.focus();
+        }
+
+        function switchChapter(chapterId) {
+            saveBook();
+            bookData.activeChapterId = chapterId;
+            renderChapters();
+            loadActiveChapter();
+        }
+
+        addChapterBtn.addEventListener('click', () => {
+            closeSidebar();
+            const chapterTitle = prompt("نئے باب کا عنوان درج کریں:", `باب ${bookData.chapters.length + 1}`);
+            if (chapterTitle) {
+                const newChapterId = `ch_${Date.now()}`;
+                bookData.chapters.push({ id: newChapterId, title: chapterTitle, content: "" });
+                switchChapter(newChapterId);
+                saveBook();
+            }
+        });
+        
+        editor.addEventListener('input', saveBook);
+
+        importTxtBtn.addEventListener('click', () => {
+            closeSidebar();
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                editor.value += e.target.result;
+                saveBook();
+            };
+            reader.readAsText(file);
+            event.target.value = null;
+        });
+
+        const exportHandler = (exportFunction) => {
+            closeSidebar();
+            setTimeout(exportFunction, 300);
+        };
+        
+        saveWordBtn.addEventListener('click', () => exportHandler(async () => {
+            if (bookData.chapters.every(ch => !ch.content || ch.content.trim() === '')) {
+                return alert("براہ کرم ایکسپورٹ کرنے سے پہلے کچھ مواد شامل کریں۔");
+            }
+            let fullContent = `<!DOCTYPE html><html dir="rtl" lang="ur"><head><meta charset="UTF-8"><title>Urdu Book</title><style>body{font-family:'Jameel Noori Nastaleeq',sans-serif;direction:rtl;text-align:right;line-height:1.8;padding:1in;}h2{font-size:22pt;text-align:center;margin:1em 0;}p{font-size:16pt;text-align:justify;margin:1em 0;}.page-break{page-break-before:always;}</style></head><body>`;
+            bookData.chapters.forEach((chapter, index) => {
+                if (index > 0) fullContent += '<div class="page-break"></div>';
+                fullContent += `<h2>${escapeHtml(chapter.title)}</h2>`;
+                const chapterText = escapeHtml(chapter.content).replace(/\n/g, '<br>');
+                fullContent += `<p>${chapterText}</p>`;
+            });
+            fullContent += '</body></html>';
+            try {
+                const blob = await htmlToDocx(fullContent, null, { orientation: 'portrait', margins: { top: 1000, right: 1000, bottom: 1000, left: 1000 } });
+                saveAs(blob, 'urdu-book.docx');
+            } catch (err) {
+                console.error("Error creating DOCX:", err);
+                alert("ورڈ دستاویز بناتے وقت خرابی پیش آئی۔");
+            }
+        }));
+
+        savePdfBtn.addEventListener('click', () => exportHandler(() => {
+            if (bookData.chapters.every(ch => ch.content.trim() === '')) {
+                return alert("Please write some content before exporting.");
+            }
+            const printableArea = document.createElement('div');
+            printableArea.style.cssText = `position:absolute;right:-9999px;width:700px;padding:20px;background-color:#fff;direction:rtl;font-family:'Jameel Noori Nastaleeq',sans-serif;`;
+            let fullContent = '';
+            bookData.chapters.forEach(chapter => {
+                // **FIXED**: Using the corrected escapeHtml function here.
+                const safeTitle = escapeHtml(chapter.title);
+                const safeContent = escapeHtml(chapter.content).replace(/\n/g, '<br/>');
+
+                fullContent += `<h2 style="font-size:28px;text-align:right;margin-bottom:1rem;">${safeTitle}</h2>`;
+                fullContent += `<p style="font-size:20px;line-height:1.8;text-align:right;">${safeContent}</p><hr style="margin:2rem 0;">`;
+            });
+            printableArea.innerHTML = fullContent;
+            document.body.appendChild(printableArea);
+
+            html2canvas(printableArea, { useCORS: true, scale: 2, backgroundColor: '#ffffff' })
+            .then(canvas => {
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = pdf.internal.pageSize.getHeight();
+                const imgHeight = canvas.height * pdfWidth / canvas.width;
+                let heightLeft = imgHeight;
+                let position = 0;
+                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeight);
+                heightLeft -= pdfHeight;
+                while (heightLeft > 0) {
+                    position -= pdfHeight;
+                    pdf.addPage();
+                    pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeight);
+                    heightLeft -= pdfHeight;
+                }
+                pdf.save('urdu-book.pdf');
+                document.body.removeChild(printableArea);
+            }).catch(err => {
+                console.error("Error creating PDF:", err);
+                alert("An error occurred while creating the PDF file.");
+                document.body.removeChild(printableArea);
+            });
+        }));
+
+        saveTxtBtn.addEventListener('click', () => exportHandler(() => {
+            if (bookData.chapters.every(ch => ch.content.trim() === '')) {
+                return alert("Please write some content before exporting.");
+            }
+            let fullTextContent = '';
+            bookData.chapters.forEach(chapter => {
+                fullTextContent += `--- ${chapter.title} ---\r\n\r\n`;
+                fullTextContent += `${chapter.content}\r\n\r\n\r\n`;
+            });
+            const blob = new Blob([fullTextContent], { type: 'text/plain;charset=utf-8' });
+            saveAs(blob, 'urdu-book.txt');
+        }));
+
+        initializeBook();
+    });
+    </script>
+</body>
+</html>
